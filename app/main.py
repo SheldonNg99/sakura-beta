@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, leaderboard, markets, predictions, wallet
 from app.core.config import settings
 
-app = FastAPI(title="SakuraAlpha API", version="0.1.0")
+app = FastAPI(title="SakuraBeta API", version="0.1.0")
 
 # CORS 
 app.add_middleware(

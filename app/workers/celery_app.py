@@ -4,7 +4,7 @@ from celery.schedules import crontab
 
 from app.core.config import settings
 
-celery = Celery("sakuraalpha", broker=settings.REDIS_URL, backend=settings.REDIS_URL)
+celery = Celery("sakurabeta", broker=settings.REDIS_URL, backend=settings.REDIS_URL)
 
 celery.conf.update(
     task_serializer="json",

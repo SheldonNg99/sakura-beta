@@ -25,7 +25,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
             <Zap size={20} className="text-white" strokeWidth={2.5} />
           </div>
-          <span className="text-white font-bold text-xl tracking-tight">SakuraAlpha</span>
+          <span className="text-white font-bold text-xl tracking-tight">SakuraBeta</span>
         </div>
 
         {/* Hero text */}
@@ -73,7 +73,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Zap size={16} className="text-white" strokeWidth={2.5} />
             </div>
-            <span className="font-bold text-foreground text-lg tracking-tight">SakuraAlpha</span>
+            <span className="font-bold text-foreground text-lg tracking-tight">SakuraBeta</span>
           </div>
           <p className="text-sm text-muted-foreground">Bet against the AI. Prove it wrong.</p>
         </div>

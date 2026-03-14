@@ -23,7 +23,7 @@ export default function AppNav() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <Zap size={16} className="text-white" strokeWidth={2.5} />
           </div>
-          <span className="font-bold text-foreground text-base tracking-tight">SakuraAlpha</span>
+          <span className="font-bold text-foreground text-base tracking-tight">SakuraBeta</span>
         </div>
 
         {/* Nav links */}

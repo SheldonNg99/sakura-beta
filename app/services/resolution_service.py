@@ -1,15 +1,26 @@
+# app/services/resolution_service.py
 import logging
+import os
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+from app.models.agent import Agent
 from app.models.market import Bet, BetPosition, Market, MarketStatus
 from app.models.prediction import Prediction, PredictionOutcome, Direction
+from app.models.user import User
 from app.services import wallet_service
 
 logger = logging.getLogger(__name__)
+
+# ── Fee config ─────────────────────────────────────────────────────────────────
+
+# Only paid when agent prediction is CORRECT
+CREATOR_FEE_PCT  = Decimal("0.05")   # 5% to agent creator
+PLATFORM_FEE_PCT = Decimal("0.02")   # 2% to platform (PLATFORM_FEE_USER_ID)
 
 # Price fetch config
 PRICE_API_TIMEOUT_SECONDS = 5
@@ -36,17 +47,26 @@ def fetch_current_price(asset: str) -> Decimal:
             return Decimal(data["price"])
         except Exception as e:
             last_error = e
-            logger.warning(f"Price fetch attempt {attempt}/{PRICE_API_MAX_RETRIES} failed for {asset}: {e}")
+            logger.warning(
+                f"Price fetch attempt {attempt}/{PRICE_API_MAX_RETRIES} "
+                f"failed for {asset}: {e}"
+            )
 
-    raise RuntimeError(f"Failed to fetch price for {asset} after {PRICE_API_MAX_RETRIES} attempts: {last_error}")
+    raise RuntimeError(
+        f"Failed to fetch price for {asset} after "
+        f"{PRICE_API_MAX_RETRIES} attempts: {last_error}"
+    )
 
 
 # ── Outcome Determination ──────────────────────────────────────────────────────
 
-def determine_outcome(direction: Direction, entry_price: Decimal, exit_price: Decimal) -> PredictionOutcome:
+def determine_outcome(
+    direction: Direction,
+    entry_price: Decimal,
+    exit_price: Decimal,
+) -> PredictionOutcome:
     """
-    Compare entry vs exit price against predicted direction.
-    Exact match (no movement) counts as incorrect — AI must be right.
+    Exact match (no movement) counts as incorrect — agent must be right.
     """
     if direction == Direction.UP:
         return PredictionOutcome.CORRECT if exit_price > entry_price else PredictionOutcome.INCORRECT
@@ -54,29 +74,92 @@ def determine_outcome(direction: Direction, entry_price: Decimal, exit_price: De
         return PredictionOutcome.CORRECT if exit_price < entry_price else PredictionOutcome.INCORRECT
 
 
+# ── Fee Distribution ───────────────────────────────────────────────────────────
+
+def _distribute_fees(
+    total_pool: Decimal,
+    agent: Agent | None,
+    market_id: int,
+    db: Session,
+) -> Decimal:
+    """
+    Deducts creator (5%) and platform (2%) fees from the total pool.
+    Only called when the agent prediction is CORRECT.
+
+    Returns the distributable amount remaining after fees.
+    """
+    distributable = total_pool
+
+    # ── Platform fee (2%) → PLATFORM_FEE_USER_ID ──────────────────────────────
+    platform_user_id_str = os.getenv("PLATFORM_FEE_USER_ID")
+    if platform_user_id_str:
+        try:
+            platform_user_id = int(platform_user_id_str)
+            platform_fee = (total_pool * PLATFORM_FEE_PCT).quantize(
+                Decimal("0.01"), rounding=ROUND_DOWN
+            )
+            if platform_fee > Decimal("0"):
+                wallet_service.credit(
+                    user_id=platform_user_id,
+                    amount=platform_fee,
+                    reference_id=market_id,
+                    db=db,
+                )
+                distributable -= platform_fee
+                logger.info(
+                    f"resolve_market: platform fee {platform_fee} "
+                    f"→ user {platform_user_id} (market {market_id})"
+                )
+        except (ValueError, TypeError) as e:
+            logger.warning(f"resolve_market: invalid PLATFORM_FEE_USER_ID — {e}")
+    else:
+        logger.debug(
+            "resolve_market: PLATFORM_FEE_USER_ID not set, skipping platform fee"
+        )
+
+    # ── Creator fee (5%) → agent uploader ─────────────────────────────────────
+    if agent is not None:
+        creator_fee = (total_pool * CREATOR_FEE_PCT).quantize(
+            Decimal("0.01"), rounding=ROUND_DOWN
+        )
+        if creator_fee > Decimal("0"):
+            wallet_service.credit(
+                user_id=agent.user_id,
+                amount=creator_fee,
+                reference_id=market_id,
+                db=db,
+            )
+            distributable -= creator_fee
+            logger.info(
+                f"resolve_market: creator fee {creator_fee} "
+                f"→ user {agent.user_id} (agent '{agent.name}', market {market_id})"
+            )
+    else:
+        logger.debug(
+            f"resolve_market: market {market_id} has no agent, skipping creator fee"
+        )
+
+    return distributable
+
+
 # ── Payout Calculation ─────────────────────────────────────────────────────────
 
 def calculate_payouts(
     winning_bets: list[Bet],
     total_winning_pool: Decimal,
-    total_losing_pool: Decimal,
+    distributable: Decimal,
 ) -> dict[int, Decimal]:
     """
-    Proportional payout: winners split the entire pot (winning + losing pool).
+    Proportional payout from the distributable pool (after fees).
     Returns {bet_id: payout_amount}.
-
-    Example: agree pool = 100, disagree pool = 60, total = 160
-    A winner who bet 30 out of 100 agree pool gets: (30/100) * 160 = 48
     """
-    total_pot = total_winning_pool + total_losing_pool
-
     if total_winning_pool == Decimal("0") or not winning_bets:
         return {}
 
     payouts = {}
     for bet in winning_bets:
         share = Decimal(str(bet.amount)) / total_winning_pool
-        payout = (share * total_pot).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+        payout = (share * distributable).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
         payouts[bet.id] = payout
 
     return payouts
@@ -89,13 +172,15 @@ def resolve_market(market_id: int, db: Session) -> bool:
     Resolves a single market. Idempotent — safe to retry.
     Returns True if resolved, False if skipped or failed.
 
-    Steps:
-      1. Lock market row — prevent double resolution
-      2. Validate status is betting_closed
-      3. Fetch exit price
-      4. Determine outcome
-      5. Distribute payouts or refund if no winners
-      6. Mark market resolved
+    Fee flow (only when agent is CORRECT):
+      Total pool
+        - 2% platform fee  → PLATFORM_FEE_USER_ID wallet
+        - 5% creator fee   → agent uploader's wallet
+        = distributable    → split proportionally among winning bettors
+
+    If agent is INCORRECT or no agent:
+      - No fees deducted
+      - Winners split full pool
     """
     # Step 1: lock market row
     market = db.execute(
@@ -106,22 +191,37 @@ def resolve_market(market_id: int, db: Session) -> bool:
         logger.error(f"resolve_market: market {market_id} not found")
         return False
 
-    # Step 2: idempotency — only resolve betting_closed markets
+    # Step 2: idempotency
     if market.status != MarketStatus.BETTING_CLOSED:
-        logger.info(f"resolve_market: skipping market {market_id} — status is {market.status}")
+        logger.info(
+            f"resolve_market: skipping market {market_id} "
+            f"— status is {market.status}"
+        )
         return False
 
-    prediction = db.get(Prediction, market.prediction_id)
+    # Load prediction + agent in one go
+    prediction = db.execute(
+        select(Prediction)
+        .options(joinedload(Prediction.agent))
+        .where(Prediction.id == market.prediction_id)
+    ).scalar_one_or_none()
+
     if not prediction:
-        logger.error(f"resolve_market: prediction not found for market {market_id}")
+        logger.error(
+            f"resolve_market: prediction not found for market {market_id}"
+        )
         _mark_stale(market, db)
         return False
+
+    agent: Agent | None = prediction.agent
 
     # Step 3: fetch exit price
     try:
         exit_price = fetch_current_price(prediction.asset)
     except RuntimeError as e:
-        logger.error(f"resolve_market: price fetch failed for market {market_id}: {e}")
+        logger.error(
+            f"resolve_market: price fetch failed for market {market_id}: {e}"
+        )
         _mark_stale(market, db)
         db.commit()
         return False
@@ -129,28 +229,34 @@ def resolve_market(market_id: int, db: Session) -> bool:
     # Step 4: determine outcome
     entry_price = Decimal(str(prediction.entry_price))
     outcome = determine_outcome(prediction.direction, entry_price, exit_price)
-
     prediction.outcome = outcome
 
-    # Step 5: distribute payouts
+    # Step 5: distribute fees + payouts
     all_bets: list[Bet] = db.execute(
         select(Bet).where(Bet.market_id == market_id)
     ).scalars().all()
 
     if not all_bets:
-        # No bets placed — nothing to distribute
         logger.info(f"resolve_market: market {market_id} resolved with no bets")
     else:
-        winning_position = BetPosition.AGREE if outcome == PredictionOutcome.CORRECT else BetPosition.DISAGREE
+        total_pool = sum(
+            (Decimal(str(b.amount)) for b in all_bets), Decimal("0")
+        )
+        winning_position = (
+            BetPosition.AGREE if outcome == PredictionOutcome.CORRECT
+            else BetPosition.DISAGREE
+        )
         winning_bets = [b for b in all_bets if b.position == winning_position]
         losing_bets  = [b for b in all_bets if b.position != winning_position]
-
-        total_winning_pool = sum((Decimal(str(b.amount)) for b in winning_bets), Decimal("0"))
-        total_losing_pool  = sum((Decimal(str(b.amount)) for b in losing_bets),  Decimal("0"))
+        total_winning_pool = sum(
+            (Decimal(str(b.amount)) for b in winning_bets), Decimal("0")
+        )
 
         if not winning_bets:
-            # Everyone loses — refund all bets
-            logger.info(f"resolve_market: no winners on market {market_id}, issuing refunds")
+            # Everyone on the same side — refund all
+            logger.info(
+                f"resolve_market: no winners on market {market_id}, issuing refunds"
+            )
             for bet in all_bets:
                 wallet_service.refund(
                     user_id=bet.user_id,
@@ -160,7 +266,19 @@ def resolve_market(market_id: int, db: Session) -> bool:
                 )
                 bet.payout = Decimal("0")
         else:
-            payouts = calculate_payouts(winning_bets, total_winning_pool, total_losing_pool)
+            # Deduct fees only when agent was CORRECT
+            if outcome == PredictionOutcome.CORRECT:
+                distributable = _distribute_fees(
+                    total_pool=total_pool,
+                    agent=agent,
+                    market_id=market_id,
+                    db=db,
+                )
+            else:
+                # Agent wrong → no creator/platform fee, winners get full pool
+                distributable = total_pool
+
+            payouts = calculate_payouts(winning_bets, total_winning_pool, distributable)
             for bet in winning_bets:
                 payout = payouts.get(bet.id, Decimal("0"))
                 bet.payout = payout
@@ -175,12 +293,14 @@ def resolve_market(market_id: int, db: Session) -> bool:
                 bet.payout = Decimal("0")
 
     # Step 6: mark resolved
-    from datetime import datetime, timezone
     market.status = MarketStatus.RESOLVED
     market.resolved_at = datetime.now(timezone.utc)
 
     db.commit()
-    logger.info(f"resolve_market: market {market_id} resolved — outcome={outcome}, exit_price={exit_price}")
+    logger.info(
+        f"resolve_market: market {market_id} resolved — "
+        f"outcome={outcome}, exit_price={exit_price}"
+    )
     return True
 
 

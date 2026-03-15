@@ -15,7 +15,7 @@ celery.conf.update(
 )
 
 celery.conf.beat_schedule = {
-    # Generate new predictions every 15 minutes
+    # Run all active agents × all assets every 15 minutes
     "generate-predictions": {
         "task": "app.workers.tasks.generate_predictions_task",
         "schedule": 60.0 * 15,
@@ -42,8 +42,8 @@ celery.conf.beat_schedule = {
 
 @celery.task(name="app.workers.tasks.generate_predictions_task")
 def generate_predictions_task() -> None:
-    from app.workers.generate_predictions import generate_predictions_for_all_assets
-    generate_predictions_for_all_assets()
+    from app.workers.generate_predictions import generate_predictions_for_all_agents
+    generate_predictions_for_all_agents()
 
 
 @celery.task(name="app.workers.tasks.close_betting_task")

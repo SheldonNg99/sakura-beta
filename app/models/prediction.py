@@ -1,7 +1,8 @@
+# app/models/prediction.py
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, Integer, Numeric, String, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -23,16 +24,13 @@ class Prediction(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    asset: Mapped[str] = mapped_column(String(20), nullable=False, index=True)  # e.g. "BTC-USD"
+    asset: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     direction: Mapped[Direction] = mapped_column(
         Enum(Direction, name="direction_enum", values_callable=lambda x: [e.value for e in x]),
-        nullable=False
+        nullable=False,
     )
-    confidence: Mapped[float] = mapped_column(Float, nullable=False)  # 0.0–1.0, not a financial value
-
-    # Entry price at prediction generation time — NUMERIC for consistency
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
     entry_price: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
-
     timeframe_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
 
     outcome: Mapped[PredictionOutcome] = mapped_column(
@@ -48,5 +46,12 @@ class Prediction(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # FK to the agent that generated this prediction.
+    # NULL for system-generated predictions (backward compatible).
+    agent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agents.id"), nullable=True, index=True
+    )
+
     # Relationships
     market: Mapped["Market"] = relationship(back_populates="prediction", uselist=False)
+    agent: Mapped["Agent | None"] = relationship(back_populates="predictions")

@@ -1,9 +1,11 @@
+# app/schemas/market.py
 from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
 
 from app.models.market import BetPosition, MarketStatus
+from app.models.prediction import Direction, PredictionOutcome
 
 
 class MarketResponse(BaseModel):
@@ -17,7 +19,18 @@ class MarketResponse(BaseModel):
     prediction_target_time: datetime
     resolution_time: datetime
 
-    model_config = {"from_attributes": True}
+    # ── Enriched prediction fields (avoids N+1 on list page) ──
+    asset: str
+    direction: Direction
+    confidence: float
+    entry_price: Decimal
+    outcome: PredictionOutcome
+
+    # ── Agent attribution (null for system predictions) ──
+    agent_id: int | None
+    agent_name: str | None   # "MomentumBot" or None
+
+    model_config = {"from_attributes": False}  # we build manually in service
 
 
 class PlaceBetRequest(BaseModel):

@@ -2,10 +2,11 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutList, Trophy, Wallet, User, Zap } from "lucide-react"
+import { LayoutList, Trophy, Wallet, User, Zap, Bot } from "lucide-react"
 
 const NAV_ITEMS = [
   { href: "/markets",     label: "Markets",     icon: LayoutList },
+  { href: "/agents",      label: "My Agents",   icon: Bot        },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy     },
   { href: "/wallet",      label: "Wallet",      icon: Wallet     },
   { href: "/profile",     label: "Profile",     icon: User       },
@@ -75,7 +76,7 @@ export default function AppNav() {
                 }`}
               >
                 <Icon size={22} strokeWidth={isActive ? 2.5 : 1.8} />
-                <span className="text-[11px] font-medium">{label}</span>
+                <span className="text-[10px] font-medium">{label}</span>
               </Link>
             )
           })}

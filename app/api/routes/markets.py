@@ -1,5 +1,6 @@
+# app/api/routes/markets.py
 import os
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -7,7 +8,6 @@ from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.market import BetResponse, MarketResponse, PlaceBetRequest
 from app.services import market_service
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 router = APIRouter(prefix="/markets", tags=["markets"])
 
@@ -20,6 +20,7 @@ def list_open_markets(
 ) -> list[MarketResponse]:
     return market_service.get_open_markets(db, limit=limit, offset=offset)
 
+
 @router.post("/dev/seed", response_model=list[MarketResponse])
 def seed_markets(
     x_dev_secret: str | None = Header(default=None),
@@ -31,8 +32,9 @@ def seed_markets(
     markets = []
     for asset in prediction_service.SUPPORTED_ASSETS:
         prediction = prediction_service.generate_prediction(asset, db)
-        market = ms.create_market(prediction, db)
-        markets.append(market)
+        market_obj = ms.create_market(prediction, db)
+        # Re-fetch enriched response
+        markets.append(ms.get_market_by_id(market_obj.id, db))
     return markets
 
 

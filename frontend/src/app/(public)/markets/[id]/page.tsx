@@ -321,7 +321,7 @@ function BetPanel({
         toast.success(`Bet placed! TX: ${txId.slice(0, 10)}...`)
         setAmount("")
         setIsLoading(false)
-        setTimeout(onSuccess, 8000)
+        setTimeout(onSuccess, 3000)
       },
       () => { setIsLoading(false); toast.error("Bet cancelled.") },
     )

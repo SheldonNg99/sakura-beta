@@ -14,7 +14,7 @@ from app.services import wallet_service
 
 # Timing constants (seconds)
 BETTING_CLOSE_BUFFER_SECONDS = 60
-RESOLUTION_BUFFER_SECONDS = 120
+RESOLUTION_BUFFER_SECONDS = 80
 
 
 # ── Response builder ───────────────────────────────────────────────────────────

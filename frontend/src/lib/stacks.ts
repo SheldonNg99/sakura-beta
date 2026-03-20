@@ -35,10 +35,15 @@ export async function getMarketOnChain(onchainMarketId: number): Promise<OnChain
     )
 
     const data = await resp.json()
+    if (!data.okay) {
+      console.error('getMarketOnChain call-read failed:', data)
+      return null
+    }
     if (!data.okay || !data.result) return null
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parsed = cvToJSON(hexToCV(data.result as any))
+    console.log('parsed CV:', JSON.stringify(parsed, null, 2))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let val: any = parsed

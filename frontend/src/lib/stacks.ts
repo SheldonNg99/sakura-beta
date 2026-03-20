@@ -1,13 +1,3 @@
-import {
-  uintCV,
-  boolCV,
-  bufferCV,
-  stringAsciiCV,
-  Pc,
-  cvToJSON,
-  hexToCV,
-} from '@stacks/transactions'
-
 export const SAKURA_CONTRACT_ADDRESS =
   process.env.NEXT_PUBLIC_STACKS_CONTRACT_ADDRESS ||
   'STPGTJ3HGE3VCNX1GGK0VCSQ85DCGSETJNSZN7F6'
@@ -16,19 +6,8 @@ export const SAKURA_CONTRACT_NAME = 'sakura-market-v5'
 
 const STACKS_API = 'https://api.testnet.hiro.so'
 
-// Encode a uint as a Clarity hex argument (type prefix 01 + 16 bytes big-endian)
 function uintToHex(n: number): string {
   return '0x01' + n.toString(16).padStart(32, '0')
-}
-
-// Encode a standard principal as hex for read-only calls
-function principalToHex(address: string): string {
-  // Use the Stacks API trick: call with the address as sender and parse
-  // Actually for read-only calls we need to serialize the principal CV
-  // Simplest: just use the contract call approach with the address in sender
-  // For now, we'll use a workaround via get-bet-count which takes (market-id, bettor)
-  // We'll call it differently — see getBetCountOnChain
-  return address
 }
 
 // ── Read on-chain market data ──────────────────────────────────────────────────
@@ -41,6 +20,8 @@ export interface OnChainMarket {
 
 export async function getMarketOnChain(onchainMarketId: number): Promise<OnChainMarket | null> {
   try {
+    const { cvToJSON, hexToCV } = await import('@stacks/transactions')
+
     const resp = await fetch(
       `${STACKS_API}/v2/contracts/call-read/${SAKURA_CONTRACT_ADDRESS}/${SAKURA_CONTRACT_NAME}/get-market`,
       {
@@ -82,20 +63,10 @@ export async function getMarketOnChain(onchainMarketId: number): Promise<OnChain
 // ── Read bet count for a user on a market ──────────────────────────────────────
 
 export async function getBetCountOnChain(
-  onchainMarketId: number,
-  bettorAddress: string,
+  _onchainMarketId: number,
+  _bettorAddress: string,
 ): Promise<number> {
-  try {
-    // get-bet-count takes a tuple key, but the read-only API needs serialized args.
-    // Use the Hiro extended API instead which is simpler.
-    // Actually, we can use the /v2/map_entry endpoint or just try nonces 0..N.
-    // Simplest approach: try nonce 0, 1, 2... until we get none back.
-    // For hackathon demo, most users will have 0 or 1 bet per market.
-    // Let's just return a reasonable max and let the claim try each nonce.
-    return 10 // try up to 10 nonces
-  } catch {
-    return 0
-  }
+  return 10
 }
 
 // ── Wallet Connect ─────────────────────────────────────────────────────────────
@@ -145,10 +116,12 @@ export async function disconnectWallet(onSuccess?: () => void) {
 }
 
 export function getWalletAddress(): string | null {
+  if (typeof window === 'undefined') return null
   return localStorage.getItem('stacks_address')
 }
 
 export function isWalletConnected(): boolean {
+  if (typeof window === 'undefined') return false
   return !!localStorage.getItem('stacks_address')
 }
 
@@ -166,6 +139,7 @@ export async function createMarketOnChain(
 ) {
   try {
     const { request } = await import('@stacks/connect')
+    const { uintCV, stringAsciiCV, bufferCV } = await import('@stacks/transactions')
 
     const hashArray = new Uint8Array(32).fill(0)
     hashArray[0] = predictionId & 0xff
@@ -215,6 +189,7 @@ export async function placeBetOnChain(
 ) {
   try {
     const { request } = await import('@stacks/connect')
+    const { uintCV, boolCV, Pc } = await import('@stacks/transactions')
 
     const postCondition = Pc.principal(senderAddress).willSendEq(amountMicroStx).ustx()
 
@@ -255,6 +230,7 @@ export async function claimPayoutOnChain(
 ) {
   try {
     const { request } = await import('@stacks/connect')
+    const { uintCV } = await import('@stacks/transactions')
 
     const result = await request('stx_callContract', {
       contract: `${SAKURA_CONTRACT_ADDRESS}.${SAKURA_CONTRACT_NAME}`,

@@ -61,7 +61,7 @@ def create_market(prediction: Prediction, db: Session) -> Market:
 
     # Override timeframe for longer betting windows
     now = datetime.now(timezone.utc)
-    betting_window_minutes = 5
+    betting_window_minutes = 8
     prediction_target_time = now + timedelta(minutes=betting_window_minutes)
     betting_closes_at = prediction_target_time - timedelta(seconds=BETTING_CLOSE_BUFFER_SECONDS)
     resolution_time = prediction_target_time + timedelta(seconds=RESOLUTION_BUFFER_SECONDS)

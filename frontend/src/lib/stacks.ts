@@ -244,6 +244,7 @@ export async function claimPayoutOnChain(
         uintCV(marketId),
         uintCV(nonce),
       ],
+      postConditionMode: 'allow',
     })
 
     if (result?.txid) {

@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react"
 import { Wallet, ArrowUpRight, ExternalLink, Copy, Check } from "lucide-react"
 import { getWalletAddress, isWalletConnected, SAKURA_CONTRACT_ADDRESS, SAKURA_CONTRACT_NAME } from "@/lib/stacks"
-import WalletConnect from "@/components/layout/WalletConnect"
+import dynamic from "next/dynamic"
 
+const WalletConnect = dynamic(() => import("@/components/layout/WalletConnect"), { ssr: false })
 const STACKS_API = "https://api.testnet.hiro.so"
 
 interface StxBalance {

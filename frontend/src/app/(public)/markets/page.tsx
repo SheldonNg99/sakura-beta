@@ -4,11 +4,12 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { marketsApi } from "@/lib/api/markets"
 import { MarketResponse } from "@/types/api"
-import WalletConnect from "@/components/layout/WalletConnect"
+import dynamic from "next/dynamic"
 import { getMarketOnChain } from "@/lib/stacks"
 import type { OnChainMarket } from "@/lib/stacks"
 import { TrendingUp, TrendingDown, Clock, Bot, Users, Zap } from "lucide-react"
 
+const WalletConnect = dynamic(() => import("@/components/layout/WalletConnect"), { ssr: false })
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function useCountdown(target: string) {

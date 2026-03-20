@@ -18,6 +18,7 @@ export interface TokenResponse {
 export interface UserResponse {
   id: number
   email: string
+  stacks_address: string | null
 }
 
 // ── Agents ─────────────────────────────────────────────────────────────────────
@@ -80,6 +81,7 @@ export interface MarketResponse {
   outcome: PredictionOutcome
   agent_id: number | null
   agent_name: string | null
+  onchain_market_id: number | null
 }
 
 export interface PlaceBetRequest {
@@ -117,6 +119,12 @@ export interface WalletTransactionResponse {
 export interface WalletHistoryResponse {
   transactions: WalletTransactionResponse[]
   total: number
+}
+
+export interface WalletConnectResponse {
+  user_id: number
+  stacks_address: string
+  message: string
 }
 
 // ── Leaderboard ────────────────────────────────────────────────────────────────

@@ -8,10 +8,10 @@ from app.models.base import Base
 
 
 class MarketStatus(str, enum.Enum):
-    OPEN = "open"                    # accepting bets
-    BETTING_CLOSED = "betting_closed"  # buffer window: no bets, awaiting resolution
-    RESOLVED = "resolved"            # payouts distributed
-    STALE = "stale"                  # price data unavailable; manual review needed
+    OPEN = "open"
+    BETTING_CLOSED = "betting_closed"
+    RESOLVED = "resolved"
+    STALE = "stale"
 
 
 class BetPosition(str, enum.Enum):
@@ -34,27 +34,19 @@ class Market(Base):
         server_default="open",
     )
 
-    # Pool totals — updated on each bet placement
     total_agree_pool: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0, server_default="0")
     total_disagree_pool: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0, server_default="0")
 
-    # --- Timing fields ---
+    # On-chain market ID from the Clarity contract — null until synced
+    onchain_market_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     opened_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    betting_closes_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    prediction_target_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    resolution_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-
-    # Actual timestamp when resolution completed (audit trail)
+    betting_closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    prediction_target_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolution_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -77,8 +69,6 @@ class Bet(Base):
     )
 
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-
-    # Null until market resolves; populated by resolution worker
     payout: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     placed_at: Mapped[datetime] = mapped_column(

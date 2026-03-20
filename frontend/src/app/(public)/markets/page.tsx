@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { marketsApi } from "@/lib/api/markets"
 import { MarketResponse } from "@/types/api"
 import WalletConnect from "@/components/layout/WalletConnect"
+import { getMarketOnChain } from "@/lib/stacks"
+import type { OnChainMarket } from "@/lib/stacks"
 import { TrendingUp, TrendingDown, Clock, Bot, Users, Zap } from "lucide-react"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -28,25 +29,28 @@ function useCountdown(target: string) {
   return timeLeft
 }
 
-function poolRatio(agree: string, disagree: string): number {
-  const a = parseFloat(agree) || 0
-  const d = parseFloat(disagree) || 0
-  const total = a + d
+function poolRatio(agree: number, disagree: number): number {
+  const total = agree + disagree
   if (total === 0) return 50
-  return Math.round((a / total) * 100)
+  return Math.round((agree / total) * 100)
+}
+
+function microToStx(micro: number): string {
+  return (micro / 1_000_000).toFixed(0)
 }
 
 // ── Market Card ────────────────────────────────────────────────────────────────
 
-function MarketCard({ market }: { market: MarketResponse }) {
+function MarketCard({ market, onchainData }: { market: MarketResponse; onchainData: OnChainMarket | null }) {
   const countdown = useCountdown(market.betting_closes_at)
   const isUp = market.direction === "up"
   const isClosed = market.status !== "open" || countdown === "Closed"
-  const agreeRatio = poolRatio(market.total_agree_pool, market.total_disagree_pool)
   const confidence = Math.round(market.confidence * 100)
-  const totalPool = (
-    parseFloat(market.total_agree_pool) + parseFloat(market.total_disagree_pool)
-  ).toFixed(0)
+
+  const agreePool = onchainData?.agreePool ?? 0
+  const disagreePool = onchainData?.disagreePool ?? 0
+  const agreeRatio = poolRatio(agreePool, disagreePool)
+  const totalStx = microToStx(agreePool + disagreePool)
 
   return (
     <Link href={`/markets/${market.id}`}>
@@ -90,7 +94,7 @@ function MarketCard({ market }: { market: MarketResponse }) {
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
                 in {market.prediction_target_time
-                  ? `${Math.round((new Date(market.prediction_target_time).getTime() - Date.now()) / 60000)} min`
+                  ? `${Math.max(0, Math.round((new Date(market.prediction_target_time).getTime() - Date.now()) / 60000))} min`
                   : "15 min"
                 }
               </p>
@@ -118,7 +122,7 @@ function MarketCard({ market }: { market: MarketResponse }) {
         <div className="px-4 pb-4 space-y-1.5 mt-auto">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="flex items-center gap-1"><Users size={10} /> Pool</span>
-            <span>{totalPool} credits · {agreeRatio}% agree</span>
+            <span>{totalStx} STX · {agreeRatio}% agree</span>
           </div>
           <div className="h-1.5 rounded-full bg-rose-500/30 overflow-hidden">
             <div
@@ -140,6 +144,7 @@ function MarketCard({ market }: { market: MarketResponse }) {
 
 export default function MarketsPage() {
   const [markets, setMarkets] = useState<MarketResponse[]>([])
+  const [onchainMap, setOnchainMap] = useState<Record<number, OnChainMarket>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -147,6 +152,21 @@ export default function MarketsPage() {
     try {
       const data = await marketsApi.getMarkets()
       setMarkets(data)
+
+      // Fetch on-chain data for markets that have an onchain_market_id
+      const onchainPromises = data
+        .filter((m) => m.onchain_market_id)
+        .map(async (m) => {
+          const onchain = await getMarketOnChain(m.onchain_market_id!)
+          return { dbId: m.id, onchain }
+        })
+
+      const results = await Promise.all(onchainPromises)
+      const map: Record<number, OnChainMarket> = {}
+      for (const r of results) {
+        if (r.onchain) map[r.dbId] = r.onchain
+      }
+      setOnchainMap(map)
     } catch {
       setError("Failed to load markets.")
     } finally {
@@ -155,6 +175,28 @@ export default function MarketsPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Poll on-chain data every 20s
+  useEffect(() => {
+    const id = setInterval(() => {
+      const onchainMarkets = markets.filter((m) => m.onchain_market_id)
+      if (onchainMarkets.length === 0) return
+
+      Promise.all(
+        onchainMarkets.map(async (m) => {
+          const onchain = await getMarketOnChain(m.onchain_market_id!)
+          return { dbId: m.id, onchain }
+        })
+      ).then((results) => {
+        const map: Record<number, OnChainMarket> = {}
+        for (const r of results) {
+          if (r.onchain) map[r.dbId] = r.onchain
+        }
+        setOnchainMap(map)
+      })
+    }, 20000)
+    return () => clearInterval(id)
+  }, [markets])
 
   if (loading) {
     return (
@@ -187,7 +229,11 @@ export default function MarketsPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {markets.map((market) => (
-            <MarketCard key={market.id} market={market} />
+            <MarketCard
+              key={market.id}
+              market={market}
+              onchainData={onchainMap[market.id] ?? null}
+            />
           ))}
         </div>
       )}

@@ -1,5 +1,5 @@
 import { api } from "@/lib/api/axios"
-import { WalletBalanceResponse, WalletHistoryResponse } from "@/types/api"
+import { WalletBalanceResponse, WalletConnectResponse, WalletHistoryResponse } from "@/types/api"
 
 export const walletApi = {
   getBalance: async (): Promise<WalletBalanceResponse> => {
@@ -12,5 +12,14 @@ export const walletApi = {
       params: { limit, offset },
     })
     return data
+  },
+
+  connectWallet: async (stacks_address: string): Promise<WalletConnectResponse> => {
+    const { data } = await api.post<WalletConnectResponse>("/wallet/connect", { stacks_address })
+    return data
+  },
+
+  disconnectWallet: async (): Promise<void> => {
+    await api.delete("/wallet/connect")
   },
 }

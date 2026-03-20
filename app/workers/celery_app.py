@@ -15,10 +15,10 @@ celery.conf.update(
 )
 
 celery.conf.beat_schedule = {
-    # Run all active agents × all assets every 15 minutes
+    # Run all active agents × all assets every 2 minutes
     "generate-predictions": {
         "task": "app.workers.tasks.generate_predictions_task",
-        "schedule": 60.0 * 15,
+        "schedule": 60.0 * 2,
     },
     # Close betting windows every 30 seconds
     "close-expired-betting-windows": {

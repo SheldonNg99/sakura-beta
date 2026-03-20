@@ -1,0 +1,9 @@
+{
+  "name": "sakura-stacks-client",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@stacks/transactions": "^7.3.1",
+    "@stacks/network": "^7.3.1"
+  }
+}

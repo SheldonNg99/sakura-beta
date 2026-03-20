@@ -87,12 +87,17 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null)
         useAuthStore.getState().clearAuth()
-        // Redirect to login — works in both client and server context
+
+        // Only redirect to login if we're currently on a protected page
         if (typeof window !== "undefined") {
-          window.location.href = "/login"
+          const publicPaths = ["/markets", "/leaderboard"]
+          const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p))
+          if (!isPublicPage) {
+            window.location.href = "/login"
+          }
         }
         return Promise.reject(refreshError)
-      } finally {
+      }finally {
         isRefreshing = false
       }
     }

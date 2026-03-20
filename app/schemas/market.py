@@ -19,18 +19,21 @@ class MarketResponse(BaseModel):
     prediction_target_time: datetime
     resolution_time: datetime
 
-    # ── Enriched prediction fields (avoids N+1 on list page) ──
+    # Enriched prediction fields
     asset: str
     direction: Direction
     confidence: float
     entry_price: Decimal
     outcome: PredictionOutcome
 
-    # ── Agent attribution (null for system predictions) ──
+    # Agent attribution
     agent_id: int | None
-    agent_name: str | None   # "MomentumBot" or None
+    agent_name: str | None
 
-    model_config = {"from_attributes": False}  # we build manually in service
+    # On-chain market ID — null until synced
+    onchain_market_id: int | None = None
+
+    model_config = {"from_attributes": False}
 
 
 class PlaceBetRequest(BaseModel):

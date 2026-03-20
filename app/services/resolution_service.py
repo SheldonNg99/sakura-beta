@@ -301,6 +301,19 @@ def resolve_market(market_id: int, db: Session) -> bool:
         f"resolve_market: market {market_id} resolved — "
         f"outcome={outcome}, exit_price={exit_price}"
     )
+
+    # Step 7: resolve on-chain (best-effort)
+    if market.onchain_market_id:
+        try:
+            from app.services.stacks_client import resolve_market_onchain
+            agent_correct = (outcome == PredictionOutcome.CORRECT)
+            resolve_market_onchain(market.onchain_market_id, agent_correct)
+        except Exception as exc:
+            logger.warning(
+                f"resolve_market: on-chain resolve failed for market {market_id} "
+                f"(onchain={market.onchain_market_id}) — {exc}"
+            )
+ 
     return True
 
 

@@ -1,10 +1,12 @@
 # app/api/routes/markets.py
 import os
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.models.market import Market
 from app.models.user import User
 from app.schemas.market import BetResponse, MarketResponse, PlaceBetRequest
 from app.services import market_service
@@ -33,7 +35,6 @@ def seed_markets(
     for asset in prediction_service.SUPPORTED_ASSETS:
         prediction = prediction_service.generate_prediction(asset, db)
         market_obj = ms.create_market(prediction, db)
-        # Re-fetch enriched response
         markets.append(ms.get_market_by_id(market_obj.id, db))
     return markets
 
@@ -60,3 +61,29 @@ def place_bet(
         amount=body.amount,
         db=db,
     )
+
+
+class SyncOnchainRequest(BaseModel):
+    onchain_market_id: int
+    tx_id: str
+
+
+@router.post("/{market_id}/sync-onchain", status_code=200)
+def sync_onchain(
+    market_id: int,
+    body: SyncOnchainRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Called by the frontend after create-market tx confirms on-chain.
+    Saves the on-chain market ID so bets can be placed.
+    """
+    market = db.get(Market, market_id)
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    market.onchain_market_id = body.onchain_market_id
+    db.commit()
+
+    return {"market_id": market_id, "onchain_market_id": body.onchain_market_id}

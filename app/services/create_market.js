@@ -31,7 +31,7 @@ async function main() {
 
   const txOptions = {
     contractAddress,
-    contractName: 'sakura-market-v3',
+    contractName: 'sakura-market-v5',
     functionName: 'create-market',
     functionArgs: [
       uintCV(parseInt(agentId)),

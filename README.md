@@ -55,7 +55,6 @@ graph TB
     CW --> RD
     CW -->|close/resolve market| SC
     CW -->|fetch price| BN
-    SC -->|read price| OR
     X4 -->|verify payment| SC
     UI -->|call-read pool data| SC
 ```

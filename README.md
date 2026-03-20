@@ -39,7 +39,6 @@ graph TB
 
     subgraph "Blockchain"
         SC[sakura-market-v5.clar]
-        OR[price-oracle.clar]
     end
 
     subgraph "External"
